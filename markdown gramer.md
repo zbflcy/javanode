@@ -1,6 +1,6 @@
 # markdown learn node
 
-#### 1、注释 comment{#comment}
+#### comment{#comment}
 
 &ensp;&ensp;markdown沿用html的注释风格使用&lt;!-- 内容 -->来进行注释  
 * 快捷键：ctrl+/
