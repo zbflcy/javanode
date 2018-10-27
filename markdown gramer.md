@@ -264,3 +264,24 @@ markdown支持三种无需列表-、+、*
 ![pic][flower]
 
 [flower]: http://ww2.sinaimg.cn/large/56d258bdjw1eugeubg8ujj21kw16odn6.jpg "floer"
+
+#### 8、注脚
+代码：
+```java
+注脚，可以通过在需要注脚的文字后面加上[^注脚名字]，然后再文章的末尾书写注脚
+注脚的格式同参考式链接的格式相同，不过是前面有^
+
+我最近在用markdown[^1]写java[^2]笔记。
+
+[^1]:markdown是一种纯文本标记语言
+[^2]:java是一种面向对象的编程语言
+
+
+```
+
+效果：
+我最近在用markdown[^1]写java[^2]笔记。
+
+[^1]:markdown是一种纯文本标记语言
+
+[^2]:java是一种面向对象的编程语言
