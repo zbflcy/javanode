@@ -37,4 +37,103 @@
 #### IO操作中存在的编码
 我们知道涉及到编码的地方一般都在字符到字节或者字节到字符的转换上，而需要这种转换的场景主要是在 I/O 的时候，这个 I/O 包括磁盘 I/O 和网络 I/O，关于网络 I/O 部分在后面将主要以 Web 应用为例介绍。下图是 Java 中处理 I/O 问题的接口：
 ![stream and reader](assets/markdown-img-paste-20181029164729652.png)  
-Reader是java中读取字符的父类，InputStream是java中读字节的父类，InputStreamReader是关联字符到字节桥梁，主要负责I/O过程中读取字节到字符的转换，具体的字节到字符的转换是由SteamDecoder完成的。在StreamDecoder解码过程中用户需要指定charset编码格式，如果没有指定，采用默认的编码格式，中文环境采用GBK
+Reader是java中读取字符的父类，InputStream是java中读字节的父类，InputStreamReader是关联字节到字符桥梁，主要负责I/O过程中读取字节到字符的转换，具体的字节到字符的转换是由SteamDecoder完成的。在StreamDecoder解码过程中用户需要指定charset编码格式，如果没有指定，采用默认的编码格式，中文环境采用GBK编码  
+<br/>
+写的情况类似，OutputSteam是写字节的父类，Writer是写字符的父类，通过OutputSteamWriter进行字节到字符的转换。  
+![writer and outputstream](assets/markdown-img-paste-20181029165544656.png)  
+StreamEncoder负责具体字符到字节的编码，编码格式同解码格式是一致的。  
+
+```java
+String file = "c:/stream.txt";
+String charset = "UTF-8";
+// 写字符换转成字节流
+FileOutputStream outputStream = new FileOutputStream(file);
+OutputStreamWriter writer = new OutputStreamWriter(
+outputStream, charset);
+try {
+   writer.write("这是要保存的中文字符");
+} finally {
+   writer.close();
+}
+// 读取字节转换成字符
+FileInputStream inputStream = new FileInputStream(file);
+InputStreamReader reader = new InputStreamReader(
+inputStream, charset);
+StringBuffer buffer = new StringBuffer();
+char[] buf = new char[64];
+int count = 0;
+try {
+   while ((count = reader.read(buf)) != -1) {
+       buffer.append(buffer, 0, count);
+   }
+} finally {
+   reader.close();
+}
+```
+在应用程序涉及到I/O的操作中，注意解码和编码统一的编码格式，如果不指定，则采用默认的编码格式，是还是强烈的不建议使用操作系统的默认编码，因为这样，你的应用程序的编码格式就和运行环境绑定起来了，在跨环境下很可能出现乱码问题。
+#### 内存中涉及到的编码
+java中String表示字符串，所以String类提供字符到字节的转换方法，也支持将字节转换为字符的的构造函数。
+```java
+String s="这是一段中文字符串";
+//字符到字节的转换
+byte [] b=s.getBytes("UTF-8");
+//字节到字符的构造函数
+String a=new String(b,"UTF-8");
+```
+
+java，Charset 提供 encode 与 decode 分别对应 char[] 到 byte[] 的编码和 byte[] 到 char[] 的解码。如下代码所示：
+```java
+Charset charset = Charset.forName("UTF-8");
+ByteBuffer byteBuffer = charset.encode(string);
+CharBuffer charBuffer = charset.decode(byteBuffer);
+```
+
+java 中还有一个ByteBuffer类，他提供一种char到byte之间的软转换，它们之间转换不需要编码解码，只是把一个16bit的char格式，拆分成2个bit的byte表示，实际值没有修改，只是数据类型转换。  
+***可以看出来，java中的char是16bit的Unicode***  
+```java
+ByteBuffer heapByteBuffer=ByteBuffer.allocate(1024);
+ByteBuffer byteBuffer = heapByteBuffer.putChar(c);
+```
+### java 编码解码
+java 编码中用到的类图  
+![](assets/markdown-img-paste-20181029191942929.png)     
+首先根据指定的 charsetName 通过 Charset.forName(charsetName) 设置 Charset 类，然后根据 Charset 创建 CharsetEncoder 对象，再调用 CharsetEncoder.encode 对字符串进行编码，不同的编码类型都会对应到一个类中，实际的编码过程是在这些类中完成的。下面是 String. getBytes(charsetName) 编码过程的时序图  
+![](assets/markdown-img-paste-20181029192028113.png)  
+
+从上图可以看出根据 charsetName 找到 Charset 类，然后根据这个字符集编码生成 CharsetEncoder，这个类是所有字符编码的父类，针对不同的字符编码集在其子类中定义了如何实现编码，有了 CharsetEncoder 对象后就可以调用 encode 方法去实现编码了。这个是 String.getBytes 编码方法，其它的如 StreamEncoder 中也是类似的方式。下面看看不同的字符集是如何将前面的字符串编码成 byte 数组的？  
+
+如字符串“I am 君山”的 char 数组为 49 20 61 6d 20 541b 5c71，下面把它按照不同的编码格式转化成相应的字节。
+
+#### 按照 ISO-8859-1 编码
+字符串“I am 君山”用 ISO-8859-1 编码，下面是编码结果：  
+![](assets/markdown-img-paste-20181029195940385.png)
+
+从上图看出 7 个 char 字符经过 ISO-8859-1 编码转变成 7 个 byte 数组，ISO-8859-1 是单字节编码，中文“君山”被转化成值是 3f 的 byte。3f 也就是“？”字符，所以经常会出现中文变成“？”很可能就是错误的使用了 ISO-8859-1 这个编码导致的。中文字符经过 ISO-8859-1 编码会丢失信息，通常我们称之为“黑洞”，它会把不认识的字符吸收掉。由于现在大部分基础的 Java 框架或系统默认的字符集编码都是 ISO-8859-1，所以很容易出现乱码问题，后面将会分析不同的乱码形式是怎么出现的。
+#### 按照 GB2312 编码
+字符串“I am 君山”用 GB2312 编码，下面是编码结果：
+![](assets/markdown-img-paste-20181029204903839.png)  
+GB2312 对应的 Charset 是 sun.nio.cs.ext. EUC_CN 而对应的 CharsetDecoder 编码类是 sun.nio.cs.ext. DoubleByte，GB2312 字符集有一个 char 到 byte 的码表，不同的字符编码就是查这个码表找到与每个字符的对应的字节，然后拼装成 byte 数组。查表的规则如下：
+`c2b[c2bIndex[char >> 8] + (char & 0xff)]`,
+如果查到的码位值大于 oxff 则是双字节，否则是单字节。双字节高 8 位作为第一个字节，低 8 位作为第二个字节，如下代码所示：
+```java
+if (bb > 0xff) {    // DoubleByte
+           if (dl - dp < 2)
+               return CoderResult.OVERFLOW;
+           da[dp++] = (byte) (bb >> 8);
+           da[dp++] = (byte) bb;
+} else {                      // SingleByte
+           if (dl - dp < 1)
+               return CoderResult.OVERFLOW;
+           da[dp++] = (byte) bb;
+}
+```
+从上图可以看出前 5 个字符经过编码后仍然是 5 个字节，而汉字被编码成双字节，在第一节中介绍到 GB2312 只支持 6763 个汉字，所以并不是所有汉字都能够用 GB2312 编码。
+
+#### 按照GBK
+字符串“I am 君山”用 GBK 编码，下面是编码结果：  
+
+![](assets/markdown-img-paste-20181029210353855.png)  
+你可能已经发现上图与 GB2312 编码的结果是一样的，没错 GBK 与 GB2312 编码结果是一样的，由此可以得出 GBK 编码是兼容 GB2312 编码的，它们的编码算法也是一样的。不同的是它们的码表长度不一样，GBK 包含的汉字字符更多。所以只要是经过 GB2312 编码的汉字都可以用 GBK 进行解码，反过来则不然。
+#### 按照UTF-16编码
+
+字符串“I am 君山”用 UTF-16 编码，下面是编码结果：
