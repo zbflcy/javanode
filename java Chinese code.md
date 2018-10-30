@@ -136,4 +136,142 @@ if (bb > 0xff) {    // DoubleByte
 你可能已经发现上图与 GB2312 编码的结果是一样的，没错 GBK 与 GB2312 编码结果是一样的，由此可以得出 GBK 编码是兼容 GB2312 编码的，它们的编码算法也是一样的。不同的是它们的码表长度不一样，GBK 包含的汉字字符更多。所以只要是经过 GB2312 编码的汉字都可以用 GBK 进行解码，反过来则不然。
 #### 按照UTF-16编码
 
-字符串“I am 君山”用 UTF-16 编码，下面是编码结果：
+字符串“I am 君山”用 UTF-16 编码，下面是编码结果：  
+![](assets/markdown-img-paste-20181029210645461.png)  
+用UTF-16进行编码，数组扩大了一倍，单字节范围内的字符，在高位补0，变成两个字节，中文字符也变成两个字节。从UTF-16编码规则来看，仅仅是将字符的高位和低位拆分变成两个字节。特点是编码效率非常高，规则十分简单.  
+不同处理器对 2 字节处理方式不同，Big-endian（高位字节在前，低位字节在后）或 Little-endian（低位字节在前，高位字节在后）编码，所以在对一串字符串进行编码是需要指明到底是 Big-endian 还是 Little-endian，所以前面有两个字节用来保存 BYTE_ORDER_MARK 值，UTF-16 是用定长 16 位（2 字节）来表示的 UCS-2 或 Unicode 转换格式，通过代理对来访问 BMP 之外的字符编码。
+
+#### 按照UTF-8编码
+字符串“I am 君山”用 UTF-8 编码，下面是编码结果：
+![](assets/markdown-img-paste-20181029212252223.png)  
+UTF-16虽然效率较高，但是由于所有的字节都是扩大了一倍的存储空间，无形之间也浪费了存储空间，此外，UTF-16采用顺序编码，不能对单个字符进行校验，如果中间的一个字符值损坏，后面所有的码值都会受到影响。而 UTF-8 这些问题都不存在，**UTF-8 对单字节范围内字符仍然用一个字节表示，对汉字采用三个字节表示**。它的编码规则如下：
+```java
+private CoderResult encodeArrayLoop(CharBuffer src,
+ByteBuffer dst){
+           char[] sa = src.array();
+           int sp = src.arrayOffset() + src.position();
+           int sl = src.arrayOffset() + src.limit();
+           byte[] da = dst.array();
+           int dp = dst.arrayOffset() + dst.position();
+           int dl = dst.arrayOffset() + dst.limit();
+           int dlASCII = dp + Math.min(sl - sp, dl - dp);
+           // ASCII only loop
+           while (dp < dlASCII && sa[sp] < '\u0080')
+               da[dp++] = (byte) sa[sp++];
+           while (sp < sl) {
+               char c = sa[sp];
+               if (c < 0x80) {
+                   // Have at most seven bits
+                   if (dp >= dl)
+                       return overflow(src, sp, dst, dp);
+                   da[dp++] = (byte)c;
+               } else if (c < 0x800) {
+                   // 2 bytes, 11 bits
+                   if (dl - dp < 2)
+                       return overflow(src, sp, dst, dp);
+                   da[dp++] = (byte)(0xc0 | (c >> 6));
+                   da[dp++] = (byte)(0x80 | (c & 0x3f));
+               } else if (Character.isSurrogate(c)) {
+                   // Have a surrogate pair
+                   if (sgp == null)
+                       sgp = new Surrogate.Parser();
+                   int uc = sgp.parse(c, sa, sp, sl);
+                   if (uc < 0) {
+                       updatePositions(src, sp, dst, dp);
+                       return sgp.error();
+                   }
+                   if (dl - dp < 4)
+                       return overflow(src, sp, dst, dp);
+                   da[dp++] = (byte)(0xf0 | ((uc >> 18)));
+                   da[dp++] = (byte)(0x80 | ((uc >> 12) & 0x3f));
+                   da[dp++] = (byte)(0x80 | ((uc >>  6) & 0x3f));
+                   da[dp++] = (byte)(0x80 | (uc & 0x3f));
+                   sp++;  // 2 chars
+               } else {
+                   // 3 bytes, 16 bits
+                   if (dl - dp < 3)
+                       return overflow(src, sp, dst, dp);
+                   da[dp++] = (byte)(0xe0 | ((c >> 12)));
+                   da[dp++] = (byte)(0x80 | ((c >>  6) & 0x3f));
+                   da[dp++] = (byte)(0x80 | (c & 0x3f));
+               }
+               sp++;
+           }
+           updatePositions(src, sp, dst, dp);
+           return CoderResult.UNDERFLOW;
+}
+```
+UTF-8 编码与 GBK 和 GB2312 不同，不用查码表，所以在编码效率上 UTF-8 的效率会更好，所以在存储中文字符时 UTF-8 编码比较理想。
+
+
+[放一个详解UTF-16和UTF-8的链接](https://cloud.tencent.com/developer/article/1341908)
+
+#### 几种编码格式的比较
+对中文字符后面四种编码格式都能处理，GB2312 与 GBK 编码规则类似，但是 GBK 范围更大，它能处理所有汉字字符，所以 GB2312 与 GBK 比较应该选择 GBK。UTF-16 与 UTF-8 都是处理 Unicode 编码，它们的编码规则不太相同，相对来说 UTF-16 编码效率最高，字符到字节相互转换更简单，进行字符串操作也更好。它适合在本地磁盘和内存之间使用，可以进行字符和字节之间快速切换，如 Java 的内存编码就是采用 UTF-16 编码。但是它不适合在网络之间传输，因为网络传输容易损坏字节流，一旦字节流损坏将很难恢复，想比较而言 UTF-8 更适合网络传输，对 ASCII 字符采用单字节存储，另外单个字符损坏也不会影响后面其它字符，在编码效率上介于 GBK 和 UTF-16 之间，所以 UTF-8 在编码效率上和编码安全性上做了平衡，是理想的中文编码方式。
+
+### java web 涉及到的编码
+对于使用中文来说，有I/O地方就涉及到编码，前面已经提到了I/O操作会引起编码，而大部分I/O引起乱码的都是网络I/O,几乎所有的应用程序都涉及到网络操作，数据经过网络传输都是以字节为单位，所有的数据都需要能够被序列化为字节，在java中数据被序列化必须集成Serializable接口。
+
+#### 压缩
+有一个问题，就是尽量压缩cookie大小，减少网络传输量，有不同的压缩算法，但是发现压缩之后字符数是变少了，但是并没有减少字节数。所谓的压缩只是将多个单字节字符通过编码转变成一个多字节字符。减少的是String.length(),并没有减少最终的字节数。比如，“ab”两个字符通过某种编码转变成一个奇怪的字符，虽然字符从两个变成了一个，但是如果采用UTF-8编码这个奇怪的字符，最终的编码可能会变成三个或者更多的字节。同样的道理比如整型数字 1234567 如果当成字符来存储，采用 UTF-8 来编码占用 7 个 byte，采用 UTF-16 编码将会占用 14 个 byte，但是把它当成 int 型数字来存储只需要 4 个 byte 来存储。看一段文本的大小，看字符本身的长度是没有意义的，即使是一样的字符，经过不同的编码，最终存储的大小也会不同，所以从字符到字节，一定要看编码类型。
+
+#### java 汉字表示
+***Java 中一个 char 是 16 个 bit 相当于两个字节***
+
+#### java web涉及到的编码
+![](assets/markdown-img-paste-20181030104129810.png)    
+如上图所示，用户发起一个http请求，需要存在编码的地方是URL、Cookie和Parameter。服务器接收到HTTP请求之后，需要解析http协议，其中URL、Cookie、parameter需要解码，服务器端可能还有读取数据库中的数据，本地或者网络中其他的文件，这些都存在编码解码的问题，当Servlet 处理完数据之后，需要将返回的数据编码，通过socket发送到用户请求的浏览器里，在经过浏览器解码成为文本。
+##### URL编码
+用户提交一个URL，URL中可能包含中文，这些中文需要编码，下面讲述编码的规则。  
+![](assets/markdown-img-paste-20181030105544475.png)  
+上图是URL的几个组成部分。我们以Tomcat为Server Engine例，Port 对应在 Tomcat 的 <Connector port="8080"/> 中配置，而 Context Path 在 <Context path="/examples"/> 中配置，Servlet Path 在 Web 应用的 web.xml 中的url-pattern中配置
+```java
+<servlet-mapping>
+       <servlet-name>junshanExample</servlet-name>
+       <url-pattern>/servlets/servlet/*</url-pattern>
+</servlet-mapping>   
+```  
+<br/>
+PathInfo 是我们请求的具体的 Servlet，QueryString 是要传递的参数，注意这里是在浏览器里直接输入 URL 所以是通过 Get 方法请求的，如果是 POST 方法请求的话，QueryString 将通过表单方式提交到服务器端，这个将在后面再介绍。
+
+我们可以看到，上图中的PathInfo 和 QueryString中出现了中文，浏览器对于PathInfo和QueryString的编码是不一样的，Pathinfo是UTF-8，而QueryString则是GBK，当然不同的浏览器可能有不同的编码方式，可以修改。  
+下面看一下Tomcat收到这个URL之后是如何解码的。  
+解析请求的 URL 是在 org.apache.coyote.HTTP11.InternalInputBuffer 的 parseRequestLine 方法中，这个方法把传过来的 URL 的 byte[] 设置到 org.apache.coyote.Request 的相应的属性中。这里的 URL 仍然是 byte 格式，转成 char 是在 org.apache.catalina.connector.CoyoteAdapter 的 convertURI 方法中完成的：
+```java
+protected void convertURI(MessageBytes uri, Request request)
+throws Exception {
+       ByteChunk bc = uri.getByteChunk();
+       int length = bc.getLength();
+       CharChunk cc = uri.getCharChunk();
+       cc.allocate(length, -1);
+       String enc = connector.getURIEncoding();
+       if (enc != null) {
+           B2CConverter conv = request.getURIConverter();
+           try {
+               if (conv == null) {
+                   conv = new B2CConverter(enc);
+                   request.setURIConverter(conv);
+               }
+           } catch (IOException e) {...}
+           if (conv != null) {
+               try {
+                   conv.convert(bc, cc, cc.getBuffer().length -
+cc.getEnd());
+                   uri.setChars(cc.getBuffer(), cc.getStart(),
+cc.getLength());
+                   return;
+               } catch (IOException e) {...}
+           }
+       }
+       // Default encoding: fast conversion
+       byte[] bbuf = bc.getBuffer();
+       char[] cbuf = cc.getBuffer();
+       int start = bc.getStart();
+       for (int i = 0; i < length; i++) {
+           cbuf[i] = (char) (bbuf[i + start] & 0xff);
+       }
+       uri.setChars(cbuf, 0, length);
+}
+```
+从上面的代码中可以知道对 URL 的 URI 部分进行解码的字符集是在 connector 的 <Connector URIEncoding=”UTF-8”/> 中定义的，如果没有定义，那么将以默认编码 ISO-8859-1 解析。所以如果有中文 URL 时最好把 URIEncoding 设置成 UTF-8 编码。  
+至于QueryString如何解析，Get请求的QueryString同Post请求的表单参数都
