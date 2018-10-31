@@ -224,8 +224,8 @@ UTF-8 编码与 GBK 和 GB2312 不同，不用查码表，所以在编码效率�
 ##### URL编码
 用户提交一个URL，URL中可能包含中文，这些中文需要编码，下面讲述编码的规则。  
 ![](assets/markdown-img-paste-20181030105544475.png)  
-上图是URL的几个组成部分。我们以Tomcat为Server Engine例，Port 对应在 Tomcat 的 <Connector port="8080"/> 中配置，而 Context Path 在 <Context path="/examples"/> 中配置，Servlet Path 在 Web 应用的 web.xml 中的url-pattern中配置
-```java
+上图是URL的几个组成部分。我们以Tomcat为Server Engine例，Port 对应在 Tomcat 的 <Connector port="8080"/> 中配置，而 Context Path 在 <Context path="/examples"/> 中配置，Servlet Path 在 Web 应用的 web.xml 中的url-pattern中配置  
+```
 <servlet-mapping>
        <servlet-name>junshanExample</servlet-name>
        <url-pattern>/servlets/servlet/*</url-pattern>
@@ -274,4 +274,58 @@ cc.getLength());
 }
 ```
 从上面的代码中可以知道对 URL 的 URI 部分进行解码的字符集是在 connector 的 <Connector URIEncoding=”UTF-8”/> 中定义的，如果没有定义，那么将以默认编码 ISO-8859-1 解析。所以如果有中文 URL 时最好把 URIEncoding 设置成 UTF-8 编码。  
-至于QueryString如何解析，Get请求的QueryString同Post请求的表单参数都
+至于QueryString如何解析，Get请求的QueryString同Post请求的表单参数都是作为Paramters来保存，都是通过request.getParameters来获取参数值，对他们的解码是在request.getParameter第一次被调用的时候执行。request.getParameter 方法被调用时将会调用 org.apache.catalina.connector.Request 的 parseParameters 方法。这个方法将会对 GET 和 POST 方式传递的参数进行解码，但是它们的解码字符集有可能不一样。POST 表单的解码将在后面介绍，QueryString 的解码字符集是在哪定义的呢？  
+它本身是HTTP通过Headr传输到服务器的，并且也在URL中，但是同URL的解码字符集是不一样的，我们刚才看到，服务器对于URL，采用connector中的urlencoding设置的方式进行解码,但是，QueryString的解码字符集要么是hear中ContentType定义的CharSet,要么是默认的ISO-8859-1,要想使用ContentType中定义的CharSet进行解码，需要在connector中配置` <Connector URIEncoding=”UTF-8” useBodyEncodingForURI=”true”/>`，将useBodyEncodingForURI定义为true，  
+**从上面的 URL 编码和解码过程来看，比较复杂，而且编码和解码并不是我们在应用程序中能完全控制的，所以在我们的应用程序中应该尽量避免在 URL 中使用非 ASCII 字符，不然很可能会碰到乱码问题，当然在我们的服务器端最好设置 <Connector/> 中的 URIEncoding 和 useBodyEncodingForURI 两个参数。**
+
+##### HTTP header 的编码和解码
+当我们发送http请求的时候，除了上面的url外，header中还会存在其他的参数，比如cookie、redirectPath等,这些值也可能存在编解码问题，tomcat在处理这些值的时候，是通过request.getHeader()完成的,如果header项没有解码，则调用MessageBytes.toString(),这个方法采用ISO-8859-1编码，将byte编码成char，而我们也不能设置 Header 的其它解码格式，**所以如果你设置 Header 中有非 ASCII 字符解码肯定会有乱码。**
+***我们在添加 Header 时也是同样的道理，不要在 Header 中传递非 ASCII 字符，如果一定要传递的话，我们可以先将这些字符用 org.apache.catalina.util.URLEncoder 编码然后再添加到 Header 中，这样在浏览器到服务器的传递过程中就不会丢失信息了，如果我们要访问这些项时再按照相应的字符集解码就好了。***
+
+##### POST表单参数的编码和解码
+
+上面提到post表单参数是同QueryString一样，在第第一调用request.getParameter时候解码，不过post表单参数传递同queryString不同，是通过hppt请求的body进行传递的,当我们在点击submit按钮的时候，浏览器会根据ContetType中的CharSet编码格式将表单填写的参数编码，然后传输给服务器端，tomcat同样采样ContentType的CharSet进行解码。所以通过 POST 表单提交的参数一般不会出现问题，而且这个字符集编码是我们自己设置的，可以通过 **request.setCharacterEncoding(charset)** 来设置。  
+另外针对 multipart/form-data 类型的参数，也就是上传的文件编码同样也是使用 ContentType 定义的字符集编码，值得注意的地方是上传文件是用字节流的方式传输到服务器的本地临时目录，这个过程并没有涉及到字符编码，而真正编码是在将文件内容添加到 parameters 中，如果用这个编码不能编码时将会用默认编码 ISO-8859-1 来编码。
+
+##### HTTP BODY的编码和解码
+当用户请求的资源获取成功之后，这些内容需要通过responese返回给客户端，这个过程要经过编码然后浏览器解码，可以通过*response.setCharacterEncoding来设置，会覆盖request.getCharacterEncoding中的值，并通过header中的ContentType返回给客户端，浏览器将会根据header中的ContentType进行解码，如果ContentType中没有设置CharSet，浏览器会根据 Html 的 <meta HTTP-equiv="Content-Type" content="text/html; charset=GBK" /> 中的Charset进行解码，如过也没有定义，会使用默认的编码来解码。
+
+### 其他需要编码的地方  
+除了 URL 和参数编码问题外，在服务端还有很多地方可能存在编码，如可能需要读取 xml、velocity 模版引擎、JSP 或者从数据库读取数据等。  
+xml 文件可以通过设置头来制定编码格式  
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+```
+Velocity 模版设置编码格式：
+```java
+  services.VelocityService.input.encoding=UTF-8
+```
+JSP 设置编码格式：
+```java
+<%@page contentType="text/html; charset=UTF-8"%>
+```
+
+访问数据库都是通过客户端 JDBC 驱动来完成，用 JDBC 来存取数据要和数据的内置编码保持一致，可以通过设置 JDBC URL 来制定如 `MySQL：url="jdbc:mysql://localhost:3306/DB?useUnicode=true&characterEncoding=GBK"`。
+
+### 常见问题分析
+在了解了 Java Web 中可能需要编码的地方后，下面看一下，当我们碰到一些乱码时，应该怎么处理这些问题？出现乱码问题唯一的原因都是在 char 到 byte 或 byte 到 char 转换中编码和解码的字符集不一致导致的，由于往往一次操作涉及到多次编解码，所以出现乱码时很难查找到底是哪个环节出现了问题，下面就几种常见的现象进行分析。
+####  中文变成了看不懂的字符
+例如，字符串“淘！我喜欢！”变成了“Ì Ô £ ¡Î Ò Ï²»¶ £ ¡”编码过程如下图所示  
+![](assets/markdown-img-paste-2018103018325345.png)  
+字符串在解码时所用的字符集与编码字符集不一致导致汉字变成了看不懂的乱码，而且是一个汉字字符变成两个乱码字符。
+
+#### 一个汉字变成一个问号
+例如，字符串“淘！我喜欢！”变成了“？？？？？？”编码过程如下图所示  
+![](assets/markdown-img-paste-20181030183439296.png)  
+将中文和中文符号经过不支持中文的 ISO-8859-1 编码后，所有字符变成了“？”，这是因为用 ISO-8859-1 进行编解码时遇到不在码值范围内的字符时统一用 3f 表示，这也就是通常所说的“黑洞”，所有 ISO-8859-1 不认识的字符都变成了“？”。
+
+#### 一个汉字变成两个问号
+例如，字符串“淘！我喜欢！”变成了“？？？？？？？？？？？？”编码过程如下图所示  
+![](assets/markdown-img-paste-2018103018352206.png)  
+这种情况比较复杂，中文经过多次编码，但是其中有一次编码或者解码不对仍然会出现中文字符变成“？”现象，出现这种情况要仔细查看中间的编码环节，找出出现编码错误的地方。  
+
+#### 一种不正常的编码
+还有一种情况是在我们通过 request.getParameter 获取参数值时，当我们直接调用`String value = request.getParameter(name); `会出现乱码，但是如果用`String value =String(request.getParameter(name).getBytes("
+ISO-8859-1"), "GBK"); `解析时取得的 value 会是正确的汉字字符，这种情况是怎么造成的呢？
+![](assets/markdown-img-paste-20181031113607636.png)  
+这种情况是这样的，ISO-8859-1 字符集的编码范围是 0000-00FF，正好和一个字节的编码范围相对应。这种特性保证了使用 ISO-8859-1 进行编码和解码可以保持编码数值“不变”。虽然中文字符在经过网络传输时，被错误地“拆”成了两个欧洲字符，但由于输出时也是用 ISO-8859-1，结果被“拆”开的中文字的两半又被合并在一起，从而又刚好组成了一个正确的汉字。虽然最终能取得正确的汉字，但是还是不建议用这种不正常的方式取得参数值，因为这中间增加了一次额外的编码与解码，这种情况出现乱码时因为 Tomcat 的配置文件中 useBodyEncodingForURI 配置项没有设置为”true”，从而造成第一次解析式用 ISO-8859-1 来解析才造成乱码的。
