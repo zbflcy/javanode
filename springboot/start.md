@@ -147,4 +147,29 @@ spring boot 允许使用任何标准的Spring框架技术去定义beans和它们
 * @ComponentScan ： 允许扫描所在package
 
 #### 20 developer tools开发者工具
-spring-boot-devtools 模块提供了development-features
+spring-boot-devtools 模块提供了development-features，添加以下依赖获得devtools
+```xml
+<dependencies>
+<dependency>
+<groupId>org.springframework.boot</groupId>
+<artifactId>spring-boot-devtools</artifactId>
+<optional>true</optional>
+</dependency>
+</dependencies>
+```
+>**Node**  
+>在运行完整的打包过的程序时，开发者工具会自动禁用。如果程序是通过java -jar启动或者通过特殊的类加载器启动，会被认为是产品应用，禁用开发者工具。  
+>为了防止devtools传递到项目中的其他模块，设置optional为true  
+
+>**Tip**  
+>Repackaged archives 默认不包含devtools。如果想使用开发者工具，需要禁用内置属性excludeDevtools  
+
+##### 20.1 默认属性
+1. 尽管缓存在生产环境中很有用，但是在开发中可能会产生反作用，阻止你看到最新的改变，所以，sping boot devtools默认禁用缓存。可以在application.xml中配置缓存选项。
+2. spring boot developer tools 默认将web logging group的日志设置为DEBUG，可以通过sping.http.log-request-details配置该属性。
+3. 如果不想使用默认属性，可以在application.properties将spring.devtools.add-properties设置成false
+
+##### 20.2 自动重启
+如果程序使用spring-boot-devtools，当classpath下面的文件发生改变时会自动重启。  
+默认情况下，classpath下所有的文件夹都会被监听。但是特定的资源，比如静态资源是不需要重启程序的。  
+>**Triggering a restart
