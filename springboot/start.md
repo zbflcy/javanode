@@ -1,4 +1,4 @@
-[toc]
+[TOC]
 ## Srping Boot 官方文档阅读
 
 ### Part II. Getting start
@@ -196,7 +196,7 @@ boot-autoconfigure, spring-boot-actuator, and spring-boot-starter开头的项目
 如果想保持默认，增加额外排除项，使用`sping.devtools.restart.additional-exclude`。
 
 **Watch Additional Paths**
-如果想监听不在classpath下面的文件或者文件夹，发生改变的时候，触发程序restart或者reload，可以在application.properties中配置spring.devtools.restart.additional-paths路径。
+如果想监听不在classpath下面的文件或者文件夹，发生改变的时候，触发程序restart或者reload，可以在application.properties中配置spring.devtools.restart.additional-paths路径
 
 **禁止重启**    
 在application.propertis中配置spring.devtools.restart.enabled=false。仅仅这样配置的话，restart classloader仍然会初始化，但是不会匹配任何修改。  
@@ -213,3 +213,68 @@ public static void main(String[] args) {
 要想使用trgger file 在application.properties中，将spring.devtools.restart.trigger-file 指定为trigger file的路径。  
 >**TIP**  
 >可以将pring.devtools.restart.trigger-file设置为全局，以便所有项目都以相同的方式运行。
+
+**自定义类加载器**
+
+如上所述,spring boot通过使用两个类加载器实现自动重启功能，对于大多数程序来说，这种方式很适用，但是有时可能造成加载问题。默认情况下，所有在IDE打开的程序都会通过restart classloader加载，所有常规的.jar文件使用base classloader加载。如果你工作在一个多模块的项目下，并且不是每个模块都导入IDE里，你可能需要自定义一些东西。  
+可以创建META-INF/spring-devtools.properties文件，里面包含以restart.exclude和restart.include为前缀的属性。include元素指的是需要通过restart classloader加载的类，exclude元素指的是通过base classloader加载的类。属性值可以是正则表达式。
+```java
+restart.exclude.companycommonlibs=/mycorp-common-[\\w-]+\.jar
+restart.include.projectcommon=/mycorp-myproj-[\\w-]+\.jar
+```
+
+**Node**  
+所有属性的keys必须唯一，只要以restart.include.或restart.exclude.开头都会考虑进去。所有来自classpath的META-INF/spring-devtools.properties都会被加载，你可以将文件打包进工程或工程使用的库里。  
+##### 20.3 LiveReload
+spirng-boot-devtools内嵌了一个LiveReload server，当资源更新的时候，用来触发浏览器刷新。  
+如果想禁用LiveReload，设置`spring.devtools.livereload`为false。  
+>**Node**
+>只能同时运行一个livereload server，在启动项目之前，确保没有其他的livereload server正在运行。
+##### 20.4 全局设置
+在$home目录下建立一个.spring-boot-
+devtools.properties，该文件中的属性会应用到本机中的所有使用devtoolos的SpringBoot项目。比如，你想配置trigger file.  
+~/.spring-boot-devtools.properties
+```java
+spring.devtools.reload.trgger-file=.reloadtrigger
+```
+##### 20.5远程调用（没看懂啦）
+Spring Boot开发者工具并不仅限于本地开发，在运行远程应用时你也可以使用一些特性。远程支持是可选的。远程调用是可选的，如果想使用这个功能，要确保在repackaged archive（比如jar，war）中包含devtools.
+```xml
+<build>
+  <plugins>
+    <plugin>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-maven-plugin</artifactId>
+      <configuration>
+        <excludeDevtools>false</excludeDevtools>
+      </configuration>
+    </plugin>
+  </plugins>
+  </build>
+```
+然后设置`sping.devtools.remote.secret`属性。  
+```
+spring.devtools.remote.secret=mysecret
+```
+>**Warning**
+> 在远程应用上启用spring-boot-devtools有一定的安全风险，生产环境中最好不要使用  
+
+远程开发者工具支持分为两个部分：一个是接受连接的服务端端点，一个事运行在本地IDE中的客户端程序。设置`spring.devtools.remote.secret`后，服务端会自动启用，客户端组件则需要手动启动。
+
+**运行远程客户端应用**
+远程客户端应用程序（remote client application）需要在IDE中运行，你需要使用跟将要连接的远程应用相同的classpath运行org.springframework.boot.devtools.RemoteSpringApplication，传参为你要连接的远程应用URL。例如，你正在使用Eclipse或STS，并有一个部署到Cloud Foundry的my-app工程，远程连接该应用需要做以下操作：
+* 从Run菜单选择Run Configurations…。
+* 创建一个新的Java Application启动配置（launch configuration）。
+* 浏览my-app工程。
+* 将org.springframework.boot.devtools.RemoteSpringApplication作为main类。
+* 将https://myapp.cfapps.io作为参数传递给RemoteSpringApplication（或其他任何远程URL）。
+
+>**NODE**  
+因为远程客户端使用的classpath跟真实应用相同，所以它能直接读取应用配置，这就是spring.devtools.remote.secret如何被读取和传递给服务器做验证的。
+强烈建议使用https://作为连接协议，这样传输通道是加密的，密码也不会被截获。
+如果需要使用代理连接远程应用，你需要配置spring.devtools.remote.proxy.host和spring.devtools.remote.proxy.port属性。
+
+**远程更新**  
+远程客户端将监听应用的classpath变化，任何更新的资源都会发布到远程应用，并触发重启，这在你使用云服务迭代某个特性时非常有用。通常远程更新和重启比完整rebuild和deploy快多了。
+>**NODE**  
+文件只有在远程客户端运行时才监控。如果你在启动远程客户端之前改变一个文件，它是不会被发布到远程server的。
