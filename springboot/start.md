@@ -172,4 +172,44 @@ spring-boot-devtools 模块提供了development-features，添加以下依赖获
 ##### 20.2 自动重启
 如果程序使用spring-boot-devtools，当classpath下面的文件发生改变时会自动重启。  
 默认情况下，classpath下所有的文件夹都会被监听。但是特定的资源，比如静态资源是不需要重启程序的。  
->**Triggering a restart
+>**IDEA Trgger a restart**  
+>1. application.properties中配置spring.devtools.restart.enabled=true  
+>2. File-Settring-Complier-Build Project automatically
+>3. ctrl+shift+alt+/,勾选Complier autoMake allow when app running  
+
+>**Node**  
+>* 可以通过禁用shutdown hook关闭自动重启，SpringApplication.setRegisterShutdownHook(false)  
+>* devtools自动重启忽略以spring-boot, spring-boot-devtools, spring-
+boot-autoconfigure, spring-boot-actuator, and spring-boot-starter开头的项目
+
+>**restart and reload**  
+>spring boot 通过使用两个classloaders实现restart，base classloader负责加载不变的类，比如第三方jar包。restart classloader负责加载当前开发的类。当项目重启时，旧的restart classloader会被丢弃，然后新建一个，这种方法保证应用程序重启通常比冷启动快很多，因为base classloader已经可用。  
+>如果重启很慢或者遇到加载问题，可以考虑使用reload技术，比如JRebel，通过在加载类时重写它们，使它们更易于重新加载
+
+**Logging changes in condition evaluaiton**   
+每次重启，默认都会记录显示condition evaluation delta 的报告。通过这个报告，可以看到程序  
+在application.properties中配置`spring.devtools.restart.log-condition-evaluation-delta=false`禁用该报告。  
+
+**Excluding Resources**  
+默认情况下，/META-INF/maven,
+/META-INF/resources, /resources, /static, /public, or /templates文件夹下面的更改并不会触发restart，但是会触发reload。可以使用spring.devtools.restart.exclude属性配置需要排除的文件，比如想要移除对/static和/pulic的监听,`spring.devtools.restart.exclude=static/**,pulic/**` 。  
+如果想保持默认，增加额外排除项，使用`sping.devtools.restart.additional-exclude`。
+
+**Watch Additional Paths**
+如果想监听不在classpath下面的文件或者文件夹，发生改变的时候，触发程序restart或者reload，可以在application.properties中配置spring.devtools.restart.additional-paths路径。
+
+**禁止重启**    
+在application.propertis中配置spring.devtools.restart.enabled=false。仅仅这样配置的话，restart classloader仍然会初始化，但是不会匹配任何修改。  
+想完全禁止restart，在主程序调用SpringApplication.run(...)之前，将System的spring.devtools.restart.enabled属性设置为false。
+```java
+public static void main(String[] args) {
+  System.setProperty("spring.devtools.restart.enabled", "false");
+  SpringApplication.run(MyApp.class, args);
+}
+```
+
+**使用Trigger File**  
+使用IDE开发的时候，相比频繁的触发程序restart，更想只在特定的时间触发，可以使用"Tigger file"。要想触发restart，必须修改trigger file。更改文件只会触发检查，并且只有在Devtools检测到有必要的时候才会重新启动。  
+要想使用trgger file 在application.properties中，将spring.devtools.restart.trigger-file 指定为trigger file的路径。  
+>**TIP**  
+>可以将pring.devtools.restart.trigger-file设置为全局，以便所有项目都以相同的方式运行。
