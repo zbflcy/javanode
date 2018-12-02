@@ -219,8 +219,7 @@ spring boot 启动会扫描以下位置的application.properties或者applicatio
 + -classpath:/ resources目录下创建配置文件
 
 上面四个路径，优先级由高到低，高优先级的配置会覆盖低优先级的配置。springboot 会从这个四个位置全部加载配置文件，实现互补配置。
->**改变配置文件**
->通过uospring.config.location指定配置文件位置，
 
-### 配置项目名称
-`server.context-path=**`指定localhost后面的东西
+
+### 自动配置
+自动配置在一定的条件下才能生效。可以配置 debug=true,显示自动配置的信息。
