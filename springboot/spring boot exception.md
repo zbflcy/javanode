@@ -161,3 +161,60 @@ public Map<String, Object> getErrorAttributes(WebRequest webRequest, boolean inc
 * error：错误提示
 * exception：异常对象
 * message：异常消息
+
+#### 2.2定制错误的json数据
+
+1. 自定义异常处理& 返回定制json 数据
+```java
+@ControllerAdvice
+public class MyExceptionHandler {
+
+    @ResponseBody
+    @ExceptionHandler(UserNotExistException.class)
+    public Map<String,Object> handleException(Exception e){
+        Map<String,Object> map = new HashMap<>();
+        map.put("code","user.notexist");
+        map.put("message",e.getMessage());
+        return map;
+    }
+}
+//没有自适应效果.
+```
+
+2. 转发到/error 进行自适应响应效果
+```java
+@ExceptionHandler(UserNotExistException.class)
+    public String handleException(Exception e, HttpServletRequest request){
+        Map<String,Object> map = new HashMap<>();
+        //传入我们自己的错误状态码  4xx 5xx，否则就不会进入定制错误页面的解析流程
+        /**
+         * Integer statusCode = (Integer) request
+         .getAttribute("javax.servlet.error.status_code");
+         */
+        request.setAttribute("javax.servlet.error.status_code",500);
+        map.put("code","user.notexist");
+        map.put("message",e.getMessage());
+        //转发到/error
+        return "forward:/error";
+    }
+```
+
+#### 2.3 将我们自己的数据携带出去
+
+出现错误之后，会来到/error请求，会被BasicErrorController处理，响应出去可以获取的数据是由getErrorAttributes得到的，（是AbstractErrorController（ErrorController）规定的方法）
+
+1. 完全来编写一个ErrorController的实现类【或者是编写AbstractErrorController的子类】，放在容器中；（注意有ErrorProperties的坑）
+2. 页面上能用的数据，或者是json 返回能用的数据，都是通过errorAttributes.getErrorAttributes得到的。容器中DefaultErrorAttributes.getErrorAttributes()；默认进行数据处理的；  
+自定义 ErrorArributes
+
+```java
+@Component
+public class MyErrorAttributes extends DefaultErrorAttributes {
+    @Override
+    public Map<String, Object> getErrorAttributes(WebRequest webRequest, boolean includeStackTrace) {
+        Map<String, Object> errorAttributes = super.getErrorAttributes(webRequest, includeStackTrace);
+        errorAttributes.put("cus",webRequest.getAttribute("cus", 0));
+        return errorAttributes;
+    }
+}
+```
