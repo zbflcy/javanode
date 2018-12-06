@@ -354,3 +354,104 @@ public WebMvcConfigurer corsConfigurer() {
 	}
 }
 ```
+
+## 28.2 Embedded Servlet Container Support
+spring boot 支持内嵌的Tomcat，jetty和Undertow。多数的开发者只需要使用合适的“Starter”获取一个完全配置好的实例即可。内嵌服务器监听8080端口的HTTP请求。
+
+### Servlet，Filter 和listener
+所有`Servlet，Filter或Servlet *Listener`实例，只要是Spring bean，都会注册到内嵌容器中。如果想在配置期间引用application.properties的属性，这是非常方便的。  
+
+默认情况下，如果上下文中只包含一个Servlet，会被映射到`/`。如果有多个servlet的情况，会把bean的名称作为路径的前缀。默认所有的过滤器会映射到`/*`。  
+
+如果基于约定（convention-based）的映射不够灵活，你可以使用`ServletRegistrationBean`，`FilterRegistrationBean`，`ServletListenerRegistrationBean`实现完全的控制。  
+
+Spring Boot附带了许多可以定义filter bean的自动配置，下面是一些filter的实例以及他们各自的order（order越低，优先级越高).  
+
+| Servlet Filter | Order |
+| - | - |
+| OrderedCharacterEncodingFilter | Ordered.HIGHEST_PRECEDENCE |
+| WebMvcMetricsFilter |  Ordered.HIGHEST_PRECEDENCE + 1 |
+| ErrorPageFilter | Ordered.HIGHEST_PRECEDENCE + 1 |
+| HttpTraceFilter  | Ordered.LOWEST_PRECEDENCE - 10 |
+
+通常为了安全并不为filter beans 设置order。  
+
+如果确实需要特定的顺序，应该避免配置一个读取 request body的filter优先级为`Ordered.HIGHEST_PRECEDENCE`，因为这个filter bean可能同 项目设置的 character encoding相冲。如果一个 Servlet filter 包装request，那么它的order应该小于或等于`OrderedFilter.REQUEST_WRAPPER_FILTER_MAX_ORDER`.  
+
+### Servlet Context Initialization
+
+内嵌servlet容器不会直接执行Servlet 3.0+的javax.servlet.ServletContainerInitializer接口，或Spring的org.springframework.web.WebApplicationInitializer接口，这样设计的目的是降低war包内运行的第三方库破坏Spring Boot应用的风险。  
+
+
+如果需要在Spring Boot应用中执行servlet上下文初始化，你需要注册一个实现o`rg.springframework.boot.context.embedded.ServletContextInitializer`接口的bean。onStartup方法可以获取ServletContext，如果需要的话可以轻松用来适配一个已存在的`WebApplicationInitializer`。  
+
+**Scanning for Servlets, Filters, and listeners**  
+
+当使用一个内嵌容器时，通过@ServletComponentScan可以启用对注解@WebServlet，@WebFilter和@WebListener类的自动注册。独立的容器（非内嵌）中`@ServletComponentScan`不起作用，取为代之的是容器内建的discovery机制。独立的容器（非内嵌）中`@ServletComponentScan`不起作用，取为代之的是容器内建的discovery机制。
+
+### The ServletWebServerApplicationContext
+
+Under the hood, Spring Boot uses a different type of `ApplicationContext` for
+embedded servlet container support. The `ServletWebServerApplicationContext` is a special type of `WebApplicationContext` that bootstraps itself by searching for a single ServletWebServerFactory bean. Usually a `TomcatServletWebServerFactory`, 
+`JettyServletWebServerFactory`, or `UndertowServletWebServerFactory` has been auto-configured.
+
+> **Note**
+> 
+You usually do not need to be aware of these implementation classes. Most applications are auto-
+configured, and the appropriate ApplicationContext and ServletWebServerFactory are
+created on your behalf.
+
+
+### Customizing Embedded Servlet Containers
+
+
+常见的Servlet容器设置 可以通过`Spring  Environment` 属性进行设置，通常将这些属性定义到`application.properties`文件中。  
+
+常见的server 设置 包括：
+
+* 网络设置：监听传入http请求的端口（`server.port`）,接口地址(`server.address`)等.
+* Session 设置:session 是否持久化（`server.servlet.session.persistence`),session 过期时间（`server.serlvet.session.timeout`），session 数据的存放位置(`server.servlet.session.strore-dir`)，和session-cookie 配置(`server.servlet.session.cookie.\*`)
+* Error 管理：错误页面的位置（`server.error.path`）等
+* SSL
+* HTTP coompression
+
+
+Spring Boot会尽量暴露常用设置，但这并不总是可能的。对于不可能的情况，可以使用专用的命名空间提供s`erver-specific`配置（查看`server.tomcat，server.undertow`）。例如，可以根据内嵌servlet容器的特性对`access logs`进行不同的设置。
+
+>**Tip**  
+>
+>具体参考[ServerProperties](https://github.com/spring-projects/spring-boot/tree/v2.1.1.RELEASE/spring-boot-project/spring-boot-autoconfigure/src/main/java/org/springframework/boot/autoconfigure/web/ServerProperties.java)  
+
+
+**Programmatic Customization**  
+
+如果需要以编程方式配置内嵌servlet容器，可以注册一个实现了`WebServerFactoryCustomizer`接口的 spring bean，在`WebServerFactoryCustomizer`中的`ConfigurableServletWebServerFactory`包含了很多自定义setter方法，下面的例子展示了编程设置端口： 
+```java
+import org.springframework.boot.web.server.WebServerFactoryCustomizer;
+import org.springframework.boot.web.servlet.server.ConfigurableServletWebServerFactory;
+import org.springframework.stereotype.Component;
+@Component
+public class CustomizationBean implements
+	WebServerFactoryCustomizer<ConfigurableServletWebServerFactory> {
+		@Override
+		public void customize(ConfigurableServletWebServerFactory server) {
+			server.setPort(9000);
+		}
+}
+```
+
+**Customizing ConfigurableServletWebServerFactory Directly** 
+如果上面提到的自定义方法过于受限，可以自行注册`TomcatServletWebServerFactory, JettyServletWebServerFactory, or UndertowServletWebServerFactory` bean。
+```java
+@Bean
+public ConfigurableServletWebServerFactory webServerFactory() {
+	TomcatServletWebServerFactory factory = new TomcatServletWebServerFactory();
+	factory.setPort(9000);
+	factory.setSessionTimeout(10, TimeUnit.MINUTES);
+	factory.addErrorPages(new ErrorPage(HttpStatus.NOT_FOUND, "/notfound.html"));
+	return factory;
+}
+```
+
+### jsp Limitations
+当
