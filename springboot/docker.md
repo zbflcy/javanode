@@ -8,3 +8,7 @@
 | docker start container_name/id | 启动容器 |
 | docker stop container_id | 停止容器 |
 | docker ps (-a) | 查看已安装容器 |
+| docker logs container_id | 查看容器日志 |
+
+
+**可以去docker.hub中查看各个容器文档**
